@@ -486,10 +486,10 @@ class QubesAdminAPI(qubes.api.AbstractQubesAPI):
         finally:  # even if calling qubes.ResizeDisk inside the VM failed
             self.app.save()
 
-    @qubes.api.method('admin.vm.volume.Import', no_payload=True,
+    @qubes.api.method('admin.vm.volume.Import',
         scope='local', write=True)
     @asyncio.coroutine
-    def vm_volume_import(self):
+    def vm_volume_import(self, untrusted_payload):
         """Import volume data.
 
         Note that this function only returns a path to where data should be
@@ -506,7 +506,19 @@ class QubesAdminAPI(qubes.api.AbstractQubesAPI):
         if not self.dest.is_halted():
             raise qubes.exc.QubesVMNotHaltedError(self.dest)
 
-        path = yield from self.dest.storage.import_data(self.arg)
+        requested_size = None
+        if untrusted_payload:
+            try:
+                untrusted_value = int(untrusted_payload.decode('ascii'))
+            except (UnicodeDecodeError, ValueError):
+                raise qubes.api.ProtocolError('Invalid value')
+            self.enforce(untrusted_value > 0)
+            requested_size = untrusted_value
+            del untrusted_value
+        del untrusted_payload
+
+        path = yield from self.dest.storage.import_data(
+            self.arg, requested_size)
         self.enforce(' ' not in path)
         size = self.dest.volumes[self.arg].size
 
